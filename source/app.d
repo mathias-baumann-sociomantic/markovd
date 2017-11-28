@@ -170,26 +170,49 @@ public class Client : SlackClient
 
 
         /// Usage of the 'mentions' helper
-        if (msg.mentions.any!((v) => v == this.id))
-        {
-            logInfo("I was mentioned! Message: %s", msg);
+        if (!msg.mentions.any!((v) => v == this.id))
+            return;
 
-            if (auto chan = "channel" in json)
-            {
-                if (auto user = "user" in json)
-                {
-                    this.sendMessage(
-                        (*chan).to!string,
-                        "Thanks for your kind words <@" ~ (*user).to!string ~ ">");
-                }
-                else
-                    logFatal("Couldn't find user: %s", json.to!string);
-            }
-            else
-                logError("Couldn't find channel: %s", json.to!string);
+
+        logInfo("I was mentioned! Message: %s", msg);
+
+        auto chan = "channel" in json
+        auto user = "user" in json
+
+        if (!chan)
+        {
+            logError("Couldn't find channel: %s", json.to!string);
+            return;
+        }
+        if (!user)
+        {
+            logFatal("Couldn't find user: %s", json.to!string);
+            return;
         }
 
+
+        string resp;
+
+        if (splitted.front.startsWith("<@" ~ this.id))
+            resp = buildResponse(splitted.drop(1));
+        else
+            resp = buildResponse(splitted);
+
+
+        this.sendMessage((*chan).to!string, resp);
+//            "Thanks for your kind words <@" ~ (*user).to!string ~ ">");
     }
 
+    string buildResponse ( Range ) ( Range range )
+    {
+        Chain* cur;
 
+        auto first_three = chain(range, generate!(a=>"")).take(3);
+
+        cur = range.front in this.responses;
+
+        if (cur is null)
+            cur = this.response.byValues().first;
+
+    }
 }
