@@ -52,6 +52,14 @@ void disablePerrValidation (TLSContext context) @safe
 ///
 public class Client : SlackClient
 {
+    import Chain;
+
+    // First three words are used to record the beginning of the sentence that
+    // we are looking to a response for
+    Chain[string] responses;
+    // First three words of the last msg
+    string[3] last_msg;
+
     /***************************************************************************
 
         Given an authentication token, starts a new connection to Slack's
@@ -101,37 +109,87 @@ public class Client : SlackClient
     }
 
     /// Just log received messages and pretty-print messages
-    public void handle (Json json)
+    public void handle ( Json json )
     {
         logInfo("Received: %s", json);
+
         auto type = enforce("type" in json, "No type in json");
+
         if (type.to!string == "pong")
             return;
-        if (type.to!string == "message")
+
+        if (type.to!string != "message")
+            return;
+
+
+        if (auto st = "subtype" in json)
         {
-            if (auto st = "subtype" in json) {
-                logInfo("Ignoring message with subtype %s", st.to!string);
-                return;
-            }
-            auto msg = enforce("text" in json, "No text for message").to!string;
-            /// Usage of the 'mentions' helper
-            if (msg.mentions.any!((v) => v == this.id))
+            logInfo("Ignoring message with subtype %s", st.to!string);
+            return;
+        }
+
+        auto msg = enforce("text" in json, "No text for message").to!string;
+
+
+        import std.algorithm;
+        import std.range;
+
+        auto splitted = msg.splitter(' ').filter!(a=>!a.empty);
+
+        auto current = splitted.front in this.responses;
+
+        if (current is null)
+        {
+            this.responses[splitted.front] = Chain(0, [], word);
+            current = splitted.front in this.responses;
+        }
+
+        auto words = chain(this.last_msg[], splitted);
+
+        foreach (i, word; words.drop(1).enumerate)
+        {
+            current.usages++;
+
+            auto next = current.links.find!(a=>a.word == word);
+
+            if (!next.empty)
             {
-                logInfo("I was mentioned! Message: %s", msg);
-                if (auto chan = "channel" in json)
+                current = next.front;
+                continue;
+            }
+
+            current = current.links ~= Chain(0, [], word);
+        }
+
+        this.last_msg[] = "";
+
+        foreach (i, word; words.take(3).enumerate)
+        {
+            this.last_msg[i] = word;
+        }
+
+
+        /// Usage of the 'mentions' helper
+        if (msg.mentions.any!((v) => v == this.id))
+        {
+            logInfo("I was mentioned! Message: %s", msg);
+
+            if (auto chan = "channel" in json)
+            {
+                if (auto user = "user" in json)
                 {
-                    if (auto user = "user" in json)
-                    {
-                        this.sendMessage(
-                            (*chan).to!string,
-                            "Thanks for your kind words <@" ~ (*user).to!string ~ ">");
-                    }
-                    else
-                        logFatal("Couldn't find user: %s", json.to!string);
+                    this.sendMessage(
+                        (*chan).to!string,
+                        "Thanks for your kind words <@" ~ (*user).to!string ~ ">");
                 }
                 else
-                    logError("Couldn't find channel: %s", json.to!string);
+                    logFatal("Couldn't find user: %s", json.to!string);
             }
+            else
+                logError("Couldn't find channel: %s", json.to!string);
         }
+
     }
+
+
 }
