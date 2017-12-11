@@ -233,16 +233,8 @@ public class Client : SlackClient
 
         string resp;
 
-        if (splitted.front.startsWith("<@" ~ this.id))
-        {
-            logInfo("Removed my name from the beginning: %s", splitted.drop(1));
-            resp = buildResponse(splitted.drop(1));
-        }
-        else
-        {
-            logInfo("Using msg as-is: %s", splitted);
-            resp = buildResponse(splitted);
-        }
+        logInfo("Using msg: %s", splitted);
+        resp = buildResponse((*user).to!string, splitted);
 
 
         this.sendMessage((*chan).to!string, resp);
@@ -254,7 +246,7 @@ public class Client : SlackClient
             this.saveBrain();
     }
 
-    string buildResponse ( Range ) ( Range range )
+    string buildResponse ( Range ) ( string target, Range range )
     {
         import std.range;
         import std.random;
@@ -297,7 +289,11 @@ public class Client : SlackClient
         while (cur.links.length > 0)
         {
             cur = &cur.links[dice(iota(1, cur.links.length+1).retro)];
-            response ~= cur.word ~ " ";
+
+            if (cur.word.startsWith("<@"))
+                response ~= "<@" ~ target ~ "> ";
+            else
+                response ~= cur.word ~ " ";
 
             if (idx < 3)
                 this.last_msg[idx++] = cur.word;
